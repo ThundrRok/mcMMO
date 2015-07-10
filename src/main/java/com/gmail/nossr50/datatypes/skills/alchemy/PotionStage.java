@@ -44,11 +44,13 @@ public enum PotionStage {
 
     public static PotionStage getPotionStage(AlchemyPotion alchemyPotion) {
         Potion potion = alchemyPotion.toPotion(1);
-
+        PotionMeta meta = (PotionMeta) potion.getItemMeta();
+        
         int stage = 1;
-
+        
         // Check if potion isn't awkward or mundane
-        if (potion.getType() != null) {
+        // mcMMO potions don't have vanilla types, so check for effects
+        if (potion.getType() != null || != null) {
             stage++;
         }
 
