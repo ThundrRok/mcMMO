@@ -2,8 +2,11 @@ package com.gmail.nossr50.datatypes.skills.alchemy;
 
 import java.util.List;
 
+import org.bukkit.Material;
 import org.bukkit.potion.Potion;
+import org.bukkit.potion.PotionData;
 import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionType;
 
 public enum PotionStage {
     FIVE(5),
@@ -42,26 +45,25 @@ public enum PotionStage {
     }
 
     private static boolean isWaterBottle(AlchemyPotion input) {
-        return input.getDataValue() == 0;
+        return input.getData().getType() == PotionType.WATER;
     }
 
     public static PotionStage getPotionStage(AlchemyPotion alchemyPotion) {
-        Potion potion = alchemyPotion.toPotion(1);
+        PotionData data = alchemyPotion.getData();
         List<PotionEffect> effects = alchemyPotion.getEffects();
 
         int stage = 1;
 
-        // Check if potion isn't awkward or mundane
-        // Check for custom effects added by mcMMO
-        if (potion.getType() != null || !effects.isEmpty()) {
+        // Check if potion has an effect of any sort
+        if (data.getType().getEffectType() != null || !effects.isEmpty()) {
             stage++;
         }
 
         // Check if potion has a glowstone dust amplifier
         // Else check if the potion has a custom effect with an amplifier added by mcMMO 
-        if (potion.getLevel() > 1) {
+        if (data.isUpgraded()) {
             stage++;
-        }else if(!effects.isEmpty()){
+        } else if(!effects.isEmpty()) {
             for (PotionEffect effect : effects){
                 if(effect.getAmplifier() > 0){
                     stage++;
@@ -71,12 +73,12 @@ public enum PotionStage {
         }
 
         // Check if potion has a redstone dust amplifier
-        if (potion.hasExtendedDuration()) {
+        if (data.isExtended()) {
             stage++;
         }
 
         // Check if potion has a gunpowder amplifier
-        if (potion.isSplash()) {
+        if (alchemyPotion.getMaterial() == Material.SPLASH_POTION || alchemyPotion.getMaterial() == Material.LINGERING_POTION) {
             stage++;
         }
 

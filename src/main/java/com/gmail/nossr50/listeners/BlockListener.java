@@ -5,12 +5,12 @@ import java.util.List;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.Sound;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.BrewingStand;
 import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -20,6 +20,7 @@ import org.bukkit.event.block.BlockDamageEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.inventory.ItemStack;
 
 import com.gmail.nossr50.mcMMO;
@@ -31,8 +32,6 @@ import com.gmail.nossr50.datatypes.skills.SkillType;
 import com.gmail.nossr50.datatypes.skills.ToolType;
 import com.gmail.nossr50.events.fake.FakeBlockBreakEvent;
 import com.gmail.nossr50.events.fake.FakeBlockDamageEvent;
-import com.gmail.nossr50.runnables.PistonTrackerTask;
-import com.gmail.nossr50.runnables.StickyPistonTrackerTask;
 import com.gmail.nossr50.skills.alchemy.Alchemy;
 import com.gmail.nossr50.skills.excavation.ExcavationManager;
 import com.gmail.nossr50.skills.herbalism.Herbalism;
@@ -47,8 +46,11 @@ import com.gmail.nossr50.util.EventUtils;
 import com.gmail.nossr50.util.ItemUtils;
 import com.gmail.nossr50.util.Misc;
 import com.gmail.nossr50.util.Permissions;
+import com.gmail.nossr50.util.adapter.SoundAdapter;
 import com.gmail.nossr50.util.player.UserManager;
 import com.gmail.nossr50.util.skills.SkillUtils;
+import org.bukkit.metadata.FixedMetadataValue;
+import org.bukkit.metadata.MetadataValue;
 
 public class BlockListener implements Listener {
     private final mcMMO plugin;
@@ -125,6 +127,34 @@ public class BlockListener implements Listener {
     }
 
     /**
+     * Monitor falling blocks.
+     *
+     * @param event The event to watch
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onFallingBlock(EntityChangeBlockEvent event) {
+
+        if (BlockUtils.shouldBeWatched(event.getBlock().getState()) && event.getEntityType().equals(EntityType.FALLING_BLOCK)) {
+            if (event.getTo().equals(Material.AIR) && mcMMO.getPlaceStore().isTrue(event.getBlock())) {
+                event.getEntity().setMetadata("mcMMOBlockFall", new FixedMetadataValue( plugin, event.getBlock().getLocation()));
+            } else {
+                List<MetadataValue> values = event.getEntity().getMetadata( "mcMMOBlockFall" );
+
+                if (!values.isEmpty()) {
+
+                    if (values.get(0).value() == null) return;
+                    Block spawn = ((org.bukkit.Location) values.get(0).value()).getBlock();
+
+
+                    mcMMO.getPlaceStore().setTrue( event.getBlock() );
+                    mcMMO.getPlaceStore().setFalse( spawn );
+
+                }
+            }
+        }
+    }
+
+    /**
      * Monitor BlockPlace events.
      *
      * @param event The event to watch
@@ -140,7 +170,7 @@ public class BlockListener implements Listener {
         BlockState blockState = event.getBlock().getState();
 
         /* Check if the blocks placed should be monitored so they do not give out XP in the future */
-        if (BlockUtils.shouldBeWatched(blockState)) {
+        if (BlockUtils.shouldBeWatched(blockState) && blockState.getType() != Material.CHORUS_FLOWER) {
             mcMMO.getPlaceStore().setTrue(blockState);
         }
 
@@ -184,7 +214,7 @@ public class BlockListener implements Listener {
         }
 
         McMMOPlayer mcMMOPlayer = UserManager.getPlayer(player);
-        ItemStack heldItem = player.getItemInHand();
+        ItemStack heldItem = player.getInventory().getItemInMainHand();
 
         /* HERBALISM */
         if (BlockUtils.affectedByGreenTerra(blockState)) {
@@ -254,7 +284,7 @@ public class BlockListener implements Listener {
         }
 
         BlockState blockState = event.getBlock().getState();
-        ItemStack heldItem = player.getItemInHand();
+        ItemStack heldItem = player.getInventory().getItemInMainHand();
 
         if (Herbalism.isRecentlyRegrown(blockState)) {
             event.setCancelled(true);
@@ -314,7 +344,7 @@ public class BlockListener implements Listener {
          * We check permissions here before processing activation.
          */
         if (BlockUtils.canActivateAbilities(blockState)) {
-            ItemStack heldItem = player.getItemInHand();
+            ItemStack heldItem = player.getInventory().getItemInMainHand();
 
             if (HiddenConfig.getInstance().useEnchantmentBuffs()) {
                 if ((ItemUtils.isPickaxe(heldItem) && !mcMMOPlayer.getAbilityMode(AbilityType.SUPER_BREAKER)) || (ItemUtils.isShovel(heldItem) && !mcMMOPlayer.getAbilityMode(AbilityType.GIGA_DRILL_BREAKER))) {
@@ -350,7 +380,7 @@ public class BlockListener implements Listener {
          * We don't need to check permissions here because they've already been checked for the ability to even activate.
          */
         if (mcMMOPlayer.getAbilityMode(AbilityType.TREE_FELLER) && BlockUtils.isLog(blockState) && Config.getInstance().getTreeFellerSoundsEnabled()) {
-            player.playSound(blockState.getLocation(), Sound.FIZZ, Misc.FIZZ_VOLUME, Misc.getFizzPitch());
+            player.playSound(blockState.getLocation(), SoundAdapter.FIZZ, Misc.FIZZ_VOLUME, Misc.getFizzPitch());
         }
     }
 
@@ -372,7 +402,7 @@ public class BlockListener implements Listener {
         }
 
         McMMOPlayer mcMMOPlayer = UserManager.getPlayer(player);
-        ItemStack heldItem = player.getItemInHand();
+        ItemStack heldItem = player.getInventory().getItemInMainHand();
         Block block = event.getBlock();
         BlockState blockState = block.getState();
 
@@ -389,7 +419,7 @@ public class BlockListener implements Listener {
         else if (mcMMOPlayer.getAbilityMode(AbilityType.BERSERK) && heldItem.getType() == Material.AIR) {
             if (AbilityType.BERSERK.blockCheck(block.getState()) && EventUtils.simulateBlockBreak(block, player, true)) {
                 event.setInstaBreak(true);
-                player.playSound(block.getLocation(), Sound.ITEM_PICKUP, Misc.POP_VOLUME, Misc.getPopPitch());
+                player.playSound(block.getLocation(), SoundAdapter.ITEM_PICKUP, Misc.POP_VOLUME, Misc.getPopPitch());
             }
             else if (mcMMOPlayer.getUnarmedManager().canUseBlockCracker() && BlockUtils.affectedByBlockCracker(blockState) && EventUtils.simulateBlockBreak(block, player, true)) {
                 if (mcMMOPlayer.getUnarmedManager().blockCrackerCheck(blockState)) {
@@ -399,7 +429,7 @@ public class BlockListener implements Listener {
         }
         else if (mcMMOPlayer.getWoodcuttingManager().canUseLeafBlower(heldItem) && BlockUtils.isLeaves(blockState) && EventUtils.simulateBlockBreak(block, player, true)) {
             event.setInstaBreak(true);
-            player.playSound(blockState.getLocation(), Sound.ITEM_PICKUP, Misc.POP_VOLUME, Misc.getPopPitch());
+            player.playSound(blockState.getLocation(), SoundAdapter.ITEM_PICKUP, Misc.POP_VOLUME, Misc.getPopPitch());
         }
     }
 }
